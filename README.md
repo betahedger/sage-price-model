@@ -1,52 +1,128 @@
-# SAGE-Price
+# SAGE Price Model
 
-금융공학을 공부하면서 같은 종목도 어떤 모형을 쓰느냐에 따라 기대주가가 얼마나 달라지는지 궁금했습니다. SAGE-Price는 시장·요인 모형과 가치평가 모형을 주가 자료에 적용하고, 과거에 상대적으로 오차가 작았던 모형에 더 큰 비중을 주어 1년 뒤 가격을 추정해 본 프로젝트입니다.
+> Performance-weighted price forecasting research prototype for quantitative investment research.
 
-**[▶ Colab에서 직접 실행하기](https://colab.research.google.com/github/betahedger/sage-price-model/blob/main/notebooks/SAGE-Price_Model.ipynb)** — 열린 화면에서 `런타임 → 모두 실행`을 누르면 삼성전자 예시의 결과 표와 그래프를 볼 수 있습니다.
+## Overview
 
-## 실행해 보니
+SAGE Price Model is a research-oriented project that explores how multiple price forecasts can be combined into a single investment signal. Instead of relying on one prediction model, the framework is designed to assign larger weights to forecasts that show stronger validation performance and then aggregate them into an expected-return signal.
 
-2016년 9월 23일부터 2026년 9월 23일까지의 삼성전자(`005930.KS`) Yahoo Finance **조정종가** 2,449개로 실행한 예시입니다. 실행 날짜나 데이터 제공 상태에 따라 값은 달라질 수 있습니다.
+The project is intended as a **decision-support research model**, not as a standalone trading system. The next step is to evaluate whether the signal remains useful under out-of-sample testing, different market regimes, transaction costs, and portfolio risk constraints.
 
-| 항목 | 결과 |
-| --- | ---: |
-| 마지막 조정종가 | 285,500원 |
-| 252거래일 뒤 모형 결합 기대주가 | 289,872원 |
-| 과거 비교 가능 시점 | 6개 |
-| 결합모형 평균 절대오차 / 기준일 가격 | 37.2% |
-| 가격이 그대로라고 가정한 기준모형의 같은 오차 | 37.9% |
+## Research Question
 
-재현 명령: `python -m stock_range_model.cli --ticker 005930.KS --end 2026-09-23` (기본 조회 기간 10년)
+> Can multiple forecasting outputs be combined according to validation performance to produce a more robust market signal than relying on a single prediction output?
 
-과거 검증에서는 첫 시점에 균등 비중을 쓰고, 이후에는 **해당 날짜까지 결과가 확인된 예측**으로만 비중을 다시 정했습니다. 이 예시의 결합 오차가 기준모형보다 0.7%p 낮지만, 비교 시점이 6개뿐이고 조정종가도 사후 수정될 수 있어 예측 우위를 입증한 결과로 보기는 어렵습니다. 이 프로젝트는 모형별 가정과 데이터, 검증 방법이 결과에 주는 영향을 확인한 실험입니다.
+## Core Idea
 
-## 모형을 묶은 이유
-
-CAPM은 시장 움직임에 대한 민감도를, Fama-French 방식의 3요인 모형은 시장·규모·가치 요인의 대리지표를 봅니다. APT 방식에는 시장·금리·환율 요인을 넣었습니다. 배당할인모형과 잔여이익모형도 함께 계산하지만, 기본 실행에서 장부가치와 ROE는 실제 재무제표가 아닌 가정값입니다. 배당 자료를 받지 못할 때도 가정값을 씁니다.
-
-다섯 모형이 항상 비슷한 값을 내지는 않습니다. 그래서 어느 하나를 정답으로 고르기보다, 과거 예측 오차를 기준으로 모형별 비중을 정했습니다.
-
-## 과거 자료로 비중 정하기
-
-기본 설정에서는 약 10년의 가격 데이터를 사용합니다. 처음 3년의 자료가 쌓인 뒤부터 기준일을 1년씩 옮기며, 각 시점의 예측주가를 252거래일 뒤 실제 주가와 비교했습니다. 모형별로 `|실제 주가 - 예측주가| / 기준일 주가`의 평균을 구하고, 그 값의 역수를 정규화해 비중으로 사용합니다. 과거 결합 예측을 검증할 때는 각 날짜에 이미 결과가 나온 오차만 사용합니다. 오늘의 기대주가는 결과가 확인된 전체 과거 자료로 비중을 정해 계산합니다.
-
-최종 결과에는 마지막 조정종가, 1년 뒤 계산상 기대주가와 수익률, 모형별 예측과 비중을 표시합니다. 가격의 하단·상단은 과거 결합 예측의 절대 백분율 오차 중 80분위수를 적용한 **참고범위**입니다. 계산 결과와 과거 비교 기록은 CSV로 남기고, 흐름은 [노트북](notebooks/SAGE-Price_Model.ipynb)에서도 확인할 수 있습니다.
-
-## 아직 보완할 부분
-
-규모·가치 요인과 일부 거시 변수는 ETF나 시장지표로 대신했습니다. 특히 한국 종목에도 미국 ETF와 미국 10년물 금리 지표를 쓰므로 국내 시장의 요인과 무위험금리를 정확하게 반영하지는 못합니다. 배당·장부가치 자료가 없을 때 쓰는 가정값도 결과에 영향을 줍니다. Yahoo Finance의 조정종가는 사후 조정될 수 있어 과거 시점에 실제로 관측 가능했던 가격과 다를 수도 있습니다.
-
-과거 결합 예측의 비중에는 이후 성과를 쓰지 않지만, 검증 시점이 6개라 오차 차이의 신뢰성이 낮습니다. 위의 참고범위도 검증된 80% 예측구간은 아닙니다. 다음에는 국내 요인과 시점별 원천 데이터를 확보하고, 더 많은 기간·종목에서 기준모형과 비교하고 싶습니다.
-
-NH선물 REST API Pioneer에서는 이 주식 모형을 선물에 그대로 옮기기보다, 데이터 수집과 기준일별 검증 구조를 API에 연결하고 선물에 맞는 입력 변수와 기준모형을 설계해 보고 싶습니다. 이 저장소에는 아직 NH선물 API 연동이 없습니다.
-
-## 실행
-
-브라우저에서는 위 Colab 링크가 가장 간단합니다. 로컬에서는 저장소를 내려받은 뒤 이 폴더에서 아래 명령을 실행하면 됩니다.
-
-```bash
-python -m pip install -r requirements.txt
-python -m stock_range_model.cli --ticker 005930.KS
+```text
+Market Data
+    ↓
+Data Preprocessing
+    ↓
+Multiple Forecast Outputs
+    ↓
+Validation Performance Measurement
+    ↓
+Performance-based Weighting
+    ↓
+Aggregated Expected-Return Signal
+    ↓
+Out-of-Sample / Portfolio Evaluation
 ```
 
-인터넷 연결 없이 구조만 확인하려면 두 번째 명령을 `python -m stock_range_model.cli --synthetic`으로 바꾸면 됩니다. 결과 파일은 `outputs/`에 저장됩니다. 로컬에서 노트북을 열 때는 `requirements-jupyter.txt`도 설치하면 됩니다. 주요 계산 코드는 [`stock_range_model`](stock_range_model)에, 데이터 선택과 가정은 [설계 메모](PROJECT_SPEC.md)에 적었습니다.
+The key principle is that a model should not receive a large weight simply because it fits historical data well. Its weight should be based on a clearly separated validation period, followed by evaluation on unseen data.
+
+## Why This Matters
+
+Financial time series are noisy and market regimes change. A single prediction model can easily overfit a specific sample. This project therefore focuses on three issues:
+
+- **Model combination** rather than dependence on one forecast
+- **Validation-based weighting** rather than in-sample performance
+- **Risk-aware use of predictions** rather than treating forecasts as certain outcomes
+
+## Evaluation Framework
+
+The model should be evaluated with both forecasting and investment metrics.
+
+### Forecast evaluation
+
+- MAE / RMSE for continuous forecasts
+- Directional accuracy where appropriate
+- Stability across validation and test periods
+
+### Investment evaluation
+
+- Cumulative return
+- CAGR
+- Annualized volatility
+- Sharpe ratio
+- Maximum drawdown
+- Turnover and transaction-cost sensitivity
+
+## Validation Rules
+
+To reduce the risk of overstating backtest performance, the project follows these principles:
+
+1. Train, validation, and test periods must remain separated.
+2. Performance weights must be determined without using future test data.
+3. Signals must be shifted when necessary so that information available at time `t` is used only for decisions after time `t`.
+4. Trading costs and turnover should be included before interpreting investment performance.
+5. Results should be checked across different market regimes rather than on one favorable interval.
+
+## Connection to RoboBridge
+
+A related asset-management concept, **RoboBridge**, treats the performance-weighted prediction model as a possible future extension rather than an already validated production component. The intended use is to convert model outputs into a limited portfolio-adjustment signal while keeping user suitability and risk limits as constraints.
+
+This distinction is important: the forecasting model is a research component whose performance must be validated before it is used in an investment service.
+
+## Current Status
+
+Research prototype / ongoing validation.
+
+The repository is being reorganized so that the experiment can be reproduced and evaluated more transparently. The next development priorities are:
+
+- clearer separation of preprocessing, modeling, and evaluation code
+- reproducible train/validation/test splits
+- automated performance reporting
+- out-of-sample and market-regime analysis
+- transaction-cost and portfolio-risk evaluation
+
+## Repository Structure
+
+The target structure is:
+
+```text
+sage-price-model/
+├── README.md
+├── notebooks/
+│   ├── 01_data_preprocessing.ipynb
+│   ├── 02_exploratory_analysis.ipynb
+│   └── 03_model_evaluation.ipynb
+├── src/
+│   ├── preprocessing.py
+│   ├── models.py
+│   ├── weighting.py
+│   └── evaluation.py
+├── results/
+│   ├── figures/
+│   └── metrics/
+├── requirements.txt
+└── .gitignore
+```
+
+The existing implementation should be moved into this structure only after each file's role has been verified; the reorganization itself should not change model logic.
+
+## Tech
+
+- Python
+- NumPy / Pandas
+- Matplotlib
+- Statistical and machine-learning workflow
+
+## Limitations
+
+A strong historical fit does not establish predictive ability. Financial data are non-stationary, and model selection can introduce overfitting even when a conventional train/test split is used. The project therefore treats out-of-sample robustness, regime sensitivity, turnover, and transaction costs as first-class evaluation criteria.
+
+## Disclaimer
+
+This repository is an educational and research project. It is not investment advice and does not represent a guarantee of future performance.
