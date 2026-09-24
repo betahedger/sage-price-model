@@ -4,7 +4,10 @@ import numpy as np
 import pandas as pd
 
 from stock_range_model.data import generate_synthetic_prices
-from stock_range_model.ensemble import forecast_with_weighted_models
+from stock_range_model.ensemble import (
+    _build_ensemble_expected_backtest,
+    forecast_with_weighted_models,
+)
 from stock_range_model.models import (
     APTMacroFactorModel,
     FamaFrenchFactorModel,
@@ -98,6 +101,27 @@ class ForecastTests(unittest.TestCase):
         late_model = GordonGrowthModel(context=context).fit(prices)
         self.assertAlmostEqual(early_model.required_return, 0.07)
         self.assertAlmostEqual(late_model.required_return, 0.16)
+
+    def test_ensemble_backtest_weights_use_only_completed_prior_outcomes(self):
+        dates = pd.to_datetime(["2020-01-01", "2021-01-01", "2022-01-01", "2023-01-01"])
+        rows = []
+        for index, actual in enumerate([100.0, 200.0, 150.0]):
+            for model, expected in [("A", 100.0), ("B", 200.0)]:
+                rows.append({
+                    "origin_date": dates[index],
+                    "target_date": dates[index + 1],
+                    "model": model,
+                    "current_price": 100.0,
+                    "actual_price": actual,
+                    "expected": expected,
+                    "absolute_relative_expected_error": abs(actual - expected) / 100.0,
+                })
+
+        result = _build_ensemble_expected_backtest(pd.DataFrame(rows))
+        self.assertEqual(result["completed_prior_tests"].tolist(), [0, 1, 2])
+        self.assertAlmostEqual(result.loc[0, "ensemble_expected"], 150.0)
+        self.assertAlmostEqual(result.loc[1, "ensemble_expected"], 100.0, places=6)
+        self.assertAlmostEqual(result.loc[2, "ensemble_expected"], 150.0)
 
 
 if __name__ == "__main__":

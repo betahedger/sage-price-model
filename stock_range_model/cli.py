@@ -91,6 +91,20 @@ def main() -> None:
         f"book value={'provided' if context.book_value_per_share is not None else 'assumed'}, "
         f"ROE={'provided' if context.roe is not None else 'assumed'}"
     )
+    evaluation = forecast.ensemble_backtest
+    model_error = (
+        (evaluation["actual_price"] - evaluation["ensemble_expected"]).abs()
+        / evaluation["current_price"]
+    ).mean()
+    unchanged_error = (
+        (evaluation["actual_price"] - evaluation["current_price"]).abs()
+        / evaluation["current_price"]
+    ).mean()
+    print(
+        f"Walk-forward ({len(evaluation)} dates): model relative MAE {model_error:.2%}, "
+        f"unchanged-price relative MAE {unchanged_error:.2%}"
+    )
+    print("Historical ensemble weights use only outcomes known by each forecast date.")
     print()
     print("Model weights")
     print(

@@ -95,7 +95,7 @@ def forecast_with_weighted_models(
     weighted_expected = float(prediction_frame["weighted_expected"].sum())
     weighted_interval_lower = float(prediction_frame["weighted_lower"].sum())
     weighted_interval_upper = float(prediction_frame["weighted_upper"].sum())
-    ensemble_backtest = _build_ensemble_expected_backtest(backtest.rows, weight_map)
+    ensemble_backtest = _build_ensemble_expected_backtest(backtest.rows)
     reference_margin = _reference_margin_from_backtest(
         ensemble_backtest,
         confidence=confidence,
@@ -121,22 +121,44 @@ def forecast_with_weighted_models(
 
 def _build_ensemble_expected_backtest(
     rows: pd.DataFrame,
-    weights: dict[str, float],
 ) -> pd.DataFrame:
-    weighted_rows = rows.copy()
-    weighted_rows["weight"] = weighted_rows["model"].map(weights).fillna(0.0)
-    weighted_rows["weighted_expected"] = weighted_rows["expected"] * weighted_rows["weight"]
+    """Combine each historical forecast using only outcomes known by its date."""
 
-    ensemble = (
-        weighted_rows.groupby(["origin_date", "target_date"], as_index=False)
-        .agg(
-            current_price=("current_price", "first"),
-            actual_price=("actual_price", "first"),
-            ensemble_expected=("weighted_expected", "sum"),
+    model_names = list(rows["model"].unique())
+    origins = rows["origin_date"].drop_duplicates().sort_values()
+    combined_rows: list[dict[str, object]] = []
+
+    for origin_date in origins:
+        known = rows.loc[
+            (rows["target_date"] <= origin_date)
+            & (rows["origin_date"] < origin_date)
+        ]
+        if known.empty:
+            weights = {name: 1.0 / len(model_names) for name in model_names}
+        else:
+            errors = known.groupby("model")["absolute_relative_expected_error"].mean()
+            weights = scores_to_weights(
+                {name: 1.0 / (float(errors[name]) + 1e-12) for name in model_names}
+            )
+
+        current = rows.loc[rows["origin_date"] == origin_date]
+        expected = sum(
+            float(row.expected) * weights[row.model]
+            for row in current.itertuples(index=False)
         )
-        .sort_values("origin_date")
-        .reset_index(drop=True)
-    )
+        first = current.iloc[0]
+        combined_rows.append(
+            {
+                "origin_date": origin_date,
+                "target_date": first["target_date"],
+                "current_price": float(first["current_price"]),
+                "actual_price": float(first["actual_price"]),
+                "ensemble_expected": expected,
+                "completed_prior_tests": int(known["origin_date"].nunique()),
+            }
+        )
+
+    ensemble = pd.DataFrame(combined_rows)
     ensemble["expected_error"] = ensemble["actual_price"] - ensemble["ensemble_expected"]
     ensemble["absolute_expected_error"] = ensemble["expected_error"].abs()
     ensemble["absolute_percentage_error"] = (
