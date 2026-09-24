@@ -64,12 +64,32 @@ def main() -> None:
     print()
     print("Weighted one-year expected price forecast")
     print("-----------------------------------------")
-    print(f"Current price : {summary.loc[0, 'current_price']:,.2f}")
+    source = "Yahoo adjusted close" if args.ticker else "CSV input" if args.csv else "synthetic demo"
+    print(f"Data source   : {source}, {prices.index.min().date()} to {prices.index.max().date()} ({len(prices):,} rows)")
+    price_label = "Latest adjusted close" if args.ticker else "Latest input price"
+    print(f"{price_label}: {summary.loc[0, 'current_price']:,.2f}")
     print(f"Expected price: {forecast.expected:,.2f}")
-    print(f"Expected return: {forecast.expected_return:.2%}")
+    print(f"Implied return: {forecast.expected_return:.2%}")
     print(
-        f"Reference range ({args.confidence:.0%} historical error): "
+        f"Reference range (past error {args.confidence:.0%} quantile; not calibrated): "
         f"{forecast.lower:,.2f} ~ {forecast.upper:,.2f}"
+    )
+    if args.ticker:
+        macro_sources = (
+            "/".join(context.macro_factors.columns)
+            if context.macro_factors is not None else "zero fallback"
+        )
+        print(
+            "Inputs       : "
+            f"market={'observed' if context.market_prices is not None else 'asset-return fallback'}, "
+            f"factor proxies={'observed' if context.ff_factors is not None else 'zero fallback'}, "
+            f"macro={macro_sources}, "
+            f"dividends={'observed' if context.dividends is not None and not context.dividends.empty else 'assumed'}"
+        )
+    print(
+        "Valuation    : "
+        f"book value={'provided' if context.book_value_per_share is not None else 'assumed'}, "
+        f"ROE={'provided' if context.roe is not None else 'assumed'}"
     )
     print()
     print("Model weights")
@@ -101,7 +121,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--years", type=int, default=10, help="Years of data to download or generate")
     parser.add_argument("--start", help="Download start date YYYY-MM-DD")
     parser.add_argument("--end", help="Download end date YYYY-MM-DD")
-    parser.add_argument("--confidence", type=float, default=0.80, help="Interval confidence, e.g. 0.80")
+    parser.add_argument("--confidence", type=float, default=0.80, help="Model interval level and past-error quantile; not calibrated")
     parser.add_argument("--horizon-days", type=int, default=252, help="Forecast horizon in trading days")
     parser.add_argument("--min-train-years", type=float, default=3.0, help="Minimum training window in years")
     parser.add_argument("--step-days", type=int, default=252, help="Walk-forward backtest step size")
@@ -141,15 +161,17 @@ def build_model_context(args: argparse.Namespace, prices: pd.Series) -> ModelCon
     macro_factors = None
     dividends = None
     risk_free_rate = args.risk_free_rate
+    risk_free_rates = None
 
     if args.ticker:
         market_ticker = args.market_ticker or infer_market_ticker(args.ticker)
         market_prices = safe_download_prices(market_ticker, start, end)
         ff_factors = build_fama_french_proxy_factors(start, end)
-        macro_factors = build_macro_proxy_factors(start, end)
+        rate_prices = safe_download_prices("^TNX", start, end)
+        macro_factors = build_macro_proxy_factors(start, end, rate_prices=rate_prices)
         dividends = safe_download_dividends(args.ticker, start, end)
-        if risk_free_rate is None:
-            risk_free_rate = infer_risk_free_rate(start, end)
+        if risk_free_rate is None and rate_prices is not None and not rate_prices.empty:
+            risk_free_rates = rate_prices.astype(float) / 100.0
 
     return ModelContext(
         market_prices=market_prices,
@@ -157,6 +179,7 @@ def build_model_context(args: argparse.Namespace, prices: pd.Series) -> ModelCon
         macro_factors=macro_factors,
         dividends=dividends,
         risk_free_rate=0.03 if risk_free_rate is None else risk_free_rate,
+        risk_free_rates=risk_free_rates,
         required_return=args.required_return,
         book_value_per_share=args.book_value_per_share,
         roe=args.roe,
@@ -186,13 +209,6 @@ def safe_download_dividends(ticker: str, start: date, end: date) -> pd.Series | 
         return None
 
 
-def infer_risk_free_rate(start: date, end: date) -> float:
-    rates = safe_download_prices("^TNX", start, end)
-    if rates is None or rates.empty:
-        return 0.03
-    return float(rates.dropna().iloc[-1] / 100.0)
-
-
 def build_fama_french_proxy_factors(start: date, end: date) -> pd.DataFrame | None:
     spy = safe_download_prices("SPY", start, end)
     iwm = safe_download_prices("IWM", start, end)
@@ -208,8 +224,12 @@ def build_fama_french_proxy_factors(start: date, end: date) -> pd.DataFrame | No
     return factors if not factors.empty else None
 
 
-def build_macro_proxy_factors(start: date, end: date) -> pd.DataFrame | None:
-    rates = safe_download_prices("^TNX", start, end)
+def build_macro_proxy_factors(
+    start: date,
+    end: date,
+    rate_prices: pd.Series | None = None,
+) -> pd.DataFrame | None:
+    rates = rate_prices if rate_prices is not None else safe_download_prices("^TNX", start, end)
     fx = safe_download_prices("KRW=X", start, end)
     factors: list[pd.Series] = []
 

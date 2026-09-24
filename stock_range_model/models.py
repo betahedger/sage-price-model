@@ -32,6 +32,7 @@ class ModelContext:
     macro_factors: pd.DataFrame | None = None
     dividends: pd.Series | None = None
     risk_free_rate: float = 0.03
+    risk_free_rates: pd.Series | None = None
     required_return: float | None = None
     book_value_per_share: float | None = None
     roe: float | None = None
@@ -101,8 +102,20 @@ def _safe_context(context: ModelContext | None) -> ModelContext:
     return context if context is not None else ModelContext()
 
 
-def _risk_free_daily(context: ModelContext) -> float:
-    return float(np.log1p(max(context.risk_free_rate, -0.99)) / TRADING_DAYS_PER_YEAR)
+def _risk_free_annual(context: ModelContext, as_of: object) -> float:
+    """Use only a rate observed by the end of the model's training window."""
+
+    rates = context.risk_free_rates
+    if rates is not None and not rates.empty:
+        available = rates.loc[rates.index <= pd.Timestamp(as_of)].dropna().sort_index()
+        if not available.empty:
+            return float(available.iloc[-1])
+    return float(context.risk_free_rate)
+
+
+def _risk_free_daily(context: ModelContext, as_of: object) -> float:
+    annual_rate = _risk_free_annual(context, as_of)
+    return float(np.log1p(max(annual_rate, -0.99)) / TRADING_DAYS_PER_YEAR)
 
 
 def _annual_to_daily_log(annual_return: float) -> float:
@@ -196,7 +209,7 @@ class CAPMModel:
             self.daily_sigma = float(asset_returns.std(ddof=1))
             return self
 
-        rf_daily = _risk_free_daily(context)
+        rf_daily = _risk_free_daily(context, prices.index.max())
         market_excess = frame["MKT"] - rf_daily
         asset_excess = frame["asset"] - rf_daily
         market_var = float(market_excess.var(ddof=1))
@@ -237,7 +250,7 @@ class FamaFrenchFactorModel:
 
     def fit(self, prices: pd.Series) -> "FamaFrenchFactorModel":
         context = _safe_context(self.context)
-        rf_daily = _risk_free_daily(context)
+        rf_daily = _risk_free_daily(context, prices.index.max())
         market_excess = (_market_returns(context, prices) - rf_daily).rename("MKT")
 
         if context.ff_factors is not None and not context.ff_factors.empty:
@@ -262,7 +275,8 @@ class FamaFrenchFactorModel:
         x = frame[["MKT", "SMB", "HML"]]
         alpha, betas = _ols(y, x)
         factor_means = x.mean().to_numpy(dtype=float)
-        self.expected_daily_return = float(rf_daily + alpha + factor_means @ betas)
+        # The fitted intercept is an in-sample residual, not a forecast of alpha.
+        self.expected_daily_return = float(rf_daily + factor_means @ betas)
         self.daily_sigma = _residual_sigma(y, x, alpha, betas)
         return self
 
@@ -293,7 +307,8 @@ class APTMacroFactorModel:
 
     def fit(self, prices: pd.Series) -> "APTMacroFactorModel":
         context = _safe_context(self.context)
-        market = _market_returns(context, prices).rename("MKT")
+        rf_daily = _risk_free_daily(context, prices.index.max())
+        market = (_market_returns(context, prices) - rf_daily).rename("MKT")
 
         if context.macro_factors is not None and not context.macro_factors.empty:
             factor_frame = context.macro_factors.copy()
@@ -313,11 +328,11 @@ class APTMacroFactorModel:
             self.daily_sigma = float(returns.std(ddof=1))
             return self
 
-        y = frame["asset"]
+        y = frame["asset"] - rf_daily
         x = frame[["MKT", "RATE_CHANGE", "FX_RETURN"]]
         alpha, betas = _ols(y, x)
         factor_means = x.mean().to_numpy(dtype=float)
-        self.expected_daily_return = float(alpha + factor_means @ betas)
+        self.expected_daily_return = float(rf_daily + factor_means @ betas)
         self.daily_sigma = _residual_sigma(y, x, alpha, betas)
         return self
 
@@ -357,7 +372,7 @@ class GordonGrowthModel:
         self.required_return = float(
             context.required_return
             if context.required_return is not None
-            else max(context.risk_free_rate + 0.06, 0.04)
+            else max(_risk_free_annual(context, cleaned.index.max()) + 0.06, 0.04)
         )
         self.dividend_yield_fallback = context.dividend_yield_fallback
 
@@ -428,7 +443,7 @@ class ResidualIncomeModel:
         self.cost_of_equity = float(
             context.required_return
             if context.required_return is not None
-            else max(context.risk_free_rate + 0.06, 0.04)
+            else max(_risk_free_annual(context, cleaned.index.max()) + 0.06, 0.04)
         )
         historical_growth = _clip_annual_growth(_annualized_log_return(cleaned), -0.05, 0.06)
         self.roe = float(context.roe if context.roe is not None else np.clip(0.10 + historical_growth / 2.0, 0.02, 0.25))
