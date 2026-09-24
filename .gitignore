@@ -1,0 +1,23 @@
+# Generated model results
+/outputs/
+/outputs_notebook/
+
+# Python and Jupyter caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Local environments and credentials
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Editor and system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
