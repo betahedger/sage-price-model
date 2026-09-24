@@ -2,54 +2,6 @@
 
 > 서로 다른 금융모형의 주가 예측값을 **과거 검증 오차에 따라 가중 결합**해 252거래일 뒤 기대주가를 산출하는 금융공학 프로젝트
 
-## 빠른 실행 (인터넷 불필요)
-
-실행 환경을 확인할 때는 외부 데이터 다운로드 없이 합성 데이터로 전체 예측 파이프라인을 실행할 수 있습니다.
-
-```bash
-git clone https://github.com/betahedger/sage-price-model.git
-cd sage-price-model
-
-python -m venv .venv
-```
-
-Windows:
-
-```bash
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m unittest discover -s tests -v
-python -m stock_range_model.cli --synthetic
-```
-
-macOS / Linux:
-
-```bash
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m unittest discover -s tests -v
-python -m stock_range_model.cli --synthetic
-```
-
-정상 실행되면 터미널에 5개 모형의 가중치와 결합 예측 결과가 출력되고 `outputs/` 폴더에 CSV 결과가 저장됩니다.
-
-실제 종목을 사용할 경우 인터넷 연결이 필요합니다.
-
-```bash
-# 삼성전자
-python -m stock_range_model.cli --ticker 005930.KS
-
-# Apple
-python -m stock_range_model.cli --ticker AAPL
-```
-
-Jupyter Notebook을 확인하려면 추가 패키지를 설치합니다.
-
-```bash
-pip install -r requirements-jupyter.txt
-jupyter notebook
-```
-
 ## 프로젝트 개요
 
 SAGE Price Model은 하나의 예측모형에 의존하지 않고, 서로 다른 가정을 가진 **5개 금융모형의 예측값을 결합**하는 연구 프로젝트입니다.
@@ -170,6 +122,21 @@ SAGE Price Model은 하나의 예측모형에 의존하지 않고, 서로 다른
 이 오차의 **80분위수**를 최종 기대주가에 더하고 빼서 가격 범위를 만듭니다.
 
 다만 `0.80`은 설정값이며, 표본 수가 적기 때문에 이를 통계적으로 검증된 80% 신뢰구간으로 해석하지 않습니다.
+
+## 실행 방법
+
+```bash
+pip install -r requirements.txt
+
+# 합성 데이터로 실행
+python -m stock_range_model.cli --synthetic
+
+# 실제 종목
+python -m stock_range_model.cli --ticker 005930.KS
+
+# 테스트
+python -m unittest discover -s tests -v
+```
 
 ## 프로젝트 구조
 
