@@ -1,128 +1,194 @@
 # SAGE Price Model
 
-> Performance-weighted price forecasting research prototype for quantitative investment research.
+> 서로 다른 금융모형의 주가 예측값을 **과거 검증 오차에 따라 가중 결합**해 252거래일 뒤 기대주가를 산출하는 금융공학 프로젝트
 
-## Overview
+## 프로젝트 개요
 
-SAGE Price Model is a research-oriented project that explores how multiple price forecasts can be combined into a single investment signal. Instead of relying on one prediction model, the framework is designed to assign larger weights to forecasts that show stronger validation performance and then aggregate them into an expected-return signal.
+SAGE Price Model은 하나의 예측모형에 의존하지 않고, 서로 다른 가정을 가진 **5개 금융모형의 예측값을 결합**하는 연구 프로젝트입니다.
 
-The project is intended as a **decision-support research model**, not as a standalone trading system. The next step is to evaluate whether the signal remains useful under out-of-sample testing, different market regimes, transaction costs, and portfolio risk constraints.
-
-## Research Question
-
-> Can multiple forecasting outputs be combined according to validation performance to produce a more robust market signal than relying on a single prediction output?
-
-## Core Idea
+각 모형은 같은 종목을 서로 다른 관점에서 평가합니다. 이후 과거 검증에서 오차가 작았던 모형에 더 높은 비중을 부여해 최종 기대주가를 계산합니다.
 
 ```text
-Market Data
-    ↓
-Data Preprocessing
-    ↓
-Multiple Forecast Outputs
-    ↓
-Validation Performance Measurement
-    ↓
-Performance-based Weighting
-    ↓
-Aggregated Expected-Return Signal
-    ↓
-Out-of-Sample / Portfolio Evaluation
+종목·시장·거시 데이터
+        ↓
+5개 모형의 개별 예상주가 계산
+        ↓
+과거 시점별 252거래일 후 실제가격과 비교
+        ↓
+모형별 평균 상대오차 계산
+        ↓
+오차의 역수로 가중치 산정
+        ↓
+가중평균 기대주가 산출
+        ↓
+과거 결합오차를 이용해 가격 범위 제시
 ```
 
-The key principle is that a model should not receive a large weight simply because it fits historical data well. Its weight should be based on a clearly separated validation period, followed by evaluation on unseen data.
+이 프로젝트의 핵심은 단순히 여러 모형의 평균을 내는 것이 아니라, **과거에 실제 결과가 확인된 예측만을 이용해 시점별로 가중치를 다시 계산**하는 데 있습니다.
 
-## Why This Matters
+## 연구 질문
 
-Financial time series are noisy and market regimes change. A single prediction model can easily overfit a specific sample. This project therefore focuses on three issues:
+> 시장위험·거시변수·배당·회계가정 등 서로 다른 정보를 사용하는 예측모형을 과거 검증 성과에 따라 결합하면 단일 모형보다 더 안정적인 기대주가를 만들 수 있는가?
 
-- **Model combination** rather than dependence on one forecast
-- **Validation-based weighting** rather than in-sample performance
-- **Risk-aware use of predictions** rather than treating forecasts as certain outcomes
+## 예측 대상
 
-## Evaluation Framework
+기본 예측 대상은 각 종목의 **252거래일 뒤 조정종가**입니다.
 
-The model should be evaluated with both forecasting and investment metrics.
+가격 데이터는 Yahoo Finance 또는 CSV로 입력할 수 있으며, 국내 종목의 시장지표는 `^KS11`, 그 외 종목은 `^GSPC`를 기본 시장지표로 사용합니다.
 
-### Forecast evaluation
+## 사용한 5개 모형
 
-- MAE / RMSE for continuous forecasts
-- Directional accuracy where appropriate
-- Stability across validation and test periods
+### 1. CAPM
 
-### Investment evaluation
+종목과 시장의 과거 수익률 관계에서 베타를 추정하고 시장 초과수익률을 반영합니다.
 
-- Cumulative return
-- CAGR
-- Annualized volatility
-- Sharpe ratio
-- Maximum drawdown
-- Turnover and transaction-cost sensitivity
+### 2. Fama-French 방식 3요인 모형
 
-## Validation Rules
+시장 초과수익률에 규모·가치 요인을 추가해 회귀합니다.
 
-To reduce the risk of overstating backtest performance, the project follows these principles:
+이 프로젝트에서는 정식 한국 SMB·HML 자료가 아니라 다음 ETF 수익률 차이를 **대리지표(proxy)** 로 사용합니다.
 
-1. Train, validation, and test periods must remain separated.
-2. Performance weights must be determined without using future test data.
-3. Signals must be shifted when necessary so that information available at time `t` is used only for decisions after time `t`.
-4. Trading costs and turnover should be included before interpreting investment performance.
-5. Results should be checked across different market regimes rather than on one favorable interval.
+- 규모 요인: `IWM - SPY`
+- 가치 요인: `IVE - IVW`
 
-## Connection to RoboBridge
+따라서 정식 Fama-French 3요인 모형의 실증결과로 해석하지 않습니다.
 
-A related asset-management concept, **RoboBridge**, treats the performance-weighted prediction model as a possible future extension rather than an already validated production component. The intended use is to convert model outputs into a limited portfolio-adjustment signal while keeping user suitability and risk limits as constraints.
+### 3. APT 방식 거시요인 모형
 
-This distinction is important: the forecasting model is a research component whose performance must be validated before it is used in an investment service.
+다음 변수와 종목 초과수익률의 관계를 추정합니다.
 
-## Current Status
+- 시장 초과수익률
+- 미국 10년물 금리 지표 `^TNX` 변화
+- 원/달러 환율 `KRW=X` 수익률
 
-Research prototype / ongoing validation.
+### 4. 배당할인모형(DDM)
 
-The repository is being reorganized so that the experiment can be reproduced and evaluated more transparently. The next development priorities are:
+최근 배당금과 배당 성장률을 이용해 가치를 계산합니다. 배당자료가 없을 경우 기본 배당수익률 가정을 사용합니다.
 
-- clearer separation of preprocessing, modeling, and evaluation code
-- reproducible train/validation/test splits
-- automated performance reporting
-- out-of-sample and market-regime analysis
-- transaction-cost and portfolio-risk evaluation
+### 5. 잔여이익모형(RIM)
 
-## Repository Structure
+장부가치와 자기자본이익률(ROE)을 이용합니다.
 
-The target structure is:
+기본 실행에서는 재무제표를 자동 수집하지 않기 때문에 장부가치와 ROE 일부를 가정값으로 대체할 수 있으며, 필요하면 CLI 인수로 직접 입력할 수 있습니다.
+
+## 성과가중 방식
+
+처음 3년의 가격을 확보한 뒤 기준일을 252거래일 간격으로 이동하면서 과거 예측을 검증합니다.
+
+각 모형의 상대오차는 다음과 같이 계산합니다.
+
+```text
+상대오차 = |실제 주가 - 모형 예상주가| / 기준일 주가
+```
+
+모형 점수는 평균 상대오차의 역수로 계산합니다.
+
+```text
+모형 점수 = 1 / (평균 상대오차 + ε)
+```
+
+다섯 모형의 점수를 합이 1이 되도록 정규화해 최종 비중을 계산합니다.
+
+```text
+모형 비중 = 모형 점수 / 다섯 모형 점수의 합
+```
+
+최종 기대주가는 다음과 같습니다.
+
+```text
+최종 기대주가 = Σ(모형별 예상주가 × 모형 비중)
+```
+
+즉, 과거 검증에서 상대오차가 작았던 모형일수록 최종 기대주가에 더 큰 영향을 줍니다.
+
+## 시점별 검증 원칙
+
+과거 결합 예측을 평가할 때는 **해당 기준일 이전에 실제 결과가 이미 확인된 예측만** 사용해 비중을 다시 계산합니다.
+
+첫 검증 시점에는 이용 가능한 과거오차가 없으므로 5개 모형을 동일 비중으로 결합합니다.
+
+이 구조는 미래의 결과를 과거 시점의 가중치 결정에 사용하지 않기 위한 장치입니다.
+
+## 기대주가 범위
+
+최종값 하나만 제시하기보다 과거 결합예측 오차를 이용해 하단·상단 범위를 함께 계산합니다.
+
+과거 결합예측에 대해 다음 오차를 구합니다.
+
+```text
+|실제 주가 - 결합 예상주가| / |결합 예상주가|
+```
+
+이 오차의 **80분위수**를 최종 기대주가에 더하고 빼서 가격 범위를 만듭니다.
+
+다만 `0.80`은 설정값이며, 표본 수가 적기 때문에 이를 통계적으로 검증된 80% 신뢰구간으로 해석하지 않습니다.
+
+## 프로젝트 구조
 
 ```text
 sage-price-model/
 ├── README.md
-├── notebooks/
-│   ├── 01_data_preprocessing.ipynb
-│   ├── 02_exploratory_analysis.ipynb
-│   └── 03_model_evaluation.ipynb
-├── src/
-│   ├── preprocessing.py
+├── PROJECT_SPEC.md
+├── stock_range_model/
 │   ├── models.py
-│   ├── weighting.py
-│   └── evaluation.py
-├── results/
-│   ├── figures/
-│   └── metrics/
+│   ├── backtest.py
+│   ├── ensemble.py
+│   └── ...
+├── notebooks/
+├── tests/
 ├── requirements.txt
-└── .gitignore
+└── requirements-jupyter.txt
 ```
 
-The existing implementation should be moved into this structure only after each file's role has been verified; the reorganization itself should not change model logic.
+핵심 구현은 다음 파일에서 확인할 수 있습니다.
 
-## Tech
+- `stock_range_model/models.py` : 개별 금융모형
+- `stock_range_model/backtest.py` : 과거 시점별 검증
+- `stock_range_model/ensemble.py` : 성과기반 가중 및 결합
 
-- Python
-- NumPy / Pandas
-- Matplotlib
-- Statistical and machine-learning workflow
+## 주요 산출물
 
-## Limitations
+실행 결과는 `outputs/`에 저장되며 다음 내용을 확인할 수 있도록 설계했습니다.
 
-A strong historical fit does not establish predictive ability. Financial data are non-stationary, and model selection can introduce overfitting even when a conventional train/test split is used. The project therefore treats out-of-sample robustness, regime sensitivity, turnover, and transaction costs as first-class evaluation criteria.
+- 최종 기대주가 및 가격 범위
+- 5개 모형별 예상주가
+- 모형별 성과가중 비중
+- 과거 시점별 예상주가와 실제주가 비교
+- 각 검증 시점에서 사용 가능한 과거 비교 횟수
 
-## Disclaimer
+## 이 프로젝트에서 보여주고자 한 역량
 
-This repository is an educational and research project. It is not investment advice and does not represent a guarantee of future performance.
+이 프로젝트의 목적은 `AI로 주가를 맞힌다`는 주장을 만드는 것이 아닙니다.
+
+대신 다음 과정을 금융공학 관점에서 구현하는 데 의미를 두었습니다.
+
+1. 서로 다른 금융모형의 가정을 코드로 구현
+2. 동일한 예측대상에 대해 모형별 결과 비교
+3. 과거 검증오차를 정량적으로 측정
+4. 검증 성과를 가중치로 변환
+5. 미래정보가 섞이지 않도록 시점별 결합
+6. 단일 예상값뿐 아니라 예측오차 기반 범위까지 제시
+
+## 한계
+
+현재 구현에는 다음과 같은 한계가 있습니다.
+
+- Yahoo Finance 조정종가는 이후 배당·분할에 따라 과거값이 다시 조정될 수 있어 완전한 point-in-time 데이터가 아닙니다.
+- 규모·가치 요인은 정식 Fama-French 요인자료가 아니라 ETF 기반 대리지표입니다.
+- `^TNX`는 한국 주식의 엄밀한 무위험금리 자료가 아닙니다.
+- 잔여이익모형의 장부가치·ROE는 기본 실행에서 일부 가정값을 사용합니다.
+- 252거래일 단위 검증으로 과거 검증표본 수가 많지 않습니다.
+- 현재 결과를 일반화된 외표본 성능이나 실제 매매성과로 해석할 수 없습니다.
+
+## 향후 개선 방향
+
+- 시점별 원천 데이터(point-in-time data) 확보
+- 한국 시장에 적합한 무위험금리 및 정식 요인자료 적용
+- 더 많은 종목·기간을 이용한 표본외 검증
+- 기준모형과의 비교
+- 거래비용을 포함한 투자전략 관점의 평가
+- 시장 국면별 모형 가중치 안정성 분석
+
+## 유의사항
+
+본 프로젝트는 학습 및 연구 목적이며 특정 종목의 매수·매도를 권유하거나 미래 수익을 보장하지 않습니다.
