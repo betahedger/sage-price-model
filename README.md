@@ -22,9 +22,11 @@ CAPM은 시장 움직임에 대한 민감도를, Fama-French 방식의 3요인 �
 
 ## 실행
 
+저장소를 내려받은 뒤 이 폴더에서 아래 두 명령을 실행하면 됩니다.
+
 ```bash
 python -m pip install -r requirements.txt
 python -m stock_range_model.cli --synthetic
 ```
 
-실제 종목을 보려면 두 번째 명령의 `--synthetic`을 `--ticker 005930.KS`로 바꾸면 됩니다. 주요 계산 코드는 [`stock_range_model`](stock_range_model)에 있습니다. 데이터 선택과 가정은 [설계 메모](PROJECT_SPEC.md)에 적었습니다.
+실제 종목을 보려면 두 번째 명령의 `--synthetic`을 `--ticker 005930.KS`로 바꾸면 됩니다. 결과 파일은 `outputs/`에 저장됩니다. 주요 계산 코드는 [`stock_range_model`](stock_range_model)에 있습니다. 데이터 선택과 가정은 [설계 메모](PROJECT_SPEC.md)에 적었습니다.

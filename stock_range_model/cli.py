@@ -85,7 +85,7 @@ def main() -> None:
         ].to_string(index=False)
     )
     print()
-    print(f"Saved CSV outputs to: {output_dir.resolve()}")
+    print(f"Saved CSV outputs to: {output_dir}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -221,7 +221,7 @@ def build_macro_proxy_factors(start: date, end: date) -> pd.DataFrame | None:
 
     if not factors:
         return None
-    frame = pd.concat(factors, axis=1).dropna(how="all").fillna(0.0)
+    frame = pd.concat(factors, axis=1, sort=False).dropna(how="all").fillna(0.0)
     return frame if not frame.empty else None
 
 
